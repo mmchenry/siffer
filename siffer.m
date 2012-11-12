@@ -1,4 +1,4 @@
-function r = siff(p)
+function r = siffer(p)
 % Runs a SIFF simulation using matlab's ODE solver functions
 
 %global p
@@ -26,12 +26,16 @@ end
 % sM = mass_body*10^6;
 % sF = sM .* sL ./ sT^2;
 
+%% Adjust flow field
+
+%dddd=4
+
 
 %% Run simulation
 
 % Solver options
 %options = odeset('Events',@evnts,'RelTol',1e-1);
-options = odeset('OutputFcn',@status_check,'RelTol',1e-1);
+options = odeset('OutputFcn',@status_check,'RelTol',p.sim.reltol);
 %options = odeset('RelTol',1e-1);
 
 % Function that runs the numerical solver
@@ -110,7 +114,7 @@ A_prev = [0 0];
 
 
 % Solve governing equation
-[t,X] = ode45(@gov_eqn,[0 p.dur],[p.X0; p.U0],options);
+[t,X] = ode45(@gov_eqn,[0 p.sim.dur],[p.prey.pos0; p.prey.spd0],options);
 
     function dX = gov_eqn(t,X)
         % ODE of the dynamics of the system
@@ -137,14 +141,14 @@ A_prev = [0 0];
         
         % Pressure force
         PF = 0.*getPressureForce(t,p,pos,pred_pos,A_prev,gape,U);
-        %PF = [-5e-3*gape./p.gape.max 0];
+        %PF = [-5e-3*gape./p.pred.gape.max 0];
         
         % Drag
         D = getDrag(p,U,V);
         
         % Body acceleration
         accel = (D + PF)./...
-                 (p.prey.mass + p.rho_water*sum(p.prey.vol)*p.added_mass);
+                 (p.prey.mass + p.water.rho*sum(p.prey.vol)*p.prey.added_mass);
    
         % Define output: speed
         dX(1,1) = V(1);
@@ -238,30 +242,27 @@ end
 function spd = getGapeSpeed(t,p)
 % Speed of flow (inertial FOR) at mouth
     
-spd = p.spd.max * ((t./p.spd.t_max).*...
-                          (exp(1-(t./p.spd.t_max)))).^p.spd.alpha;
+spd = p.pred.spd.max * ((t./p.pred.spd.t_max).*...
+               (exp(1-(t./p.pred.spd.t_max)))).^p.pred.spd.alpha;
 
 end
 
-
 function gape = getGape(t,p)
 % Gape diameter
-gape = p.gape.max.*((t./p.gape.t_max).*...
-                  (exp(1-(t./p.gape.t_max)))).^p.gape.alpha;
-% Avoid zero values 
-%gape = gape + realmin;
+gape = p.pred.gape.max.*((t./p.pred.gape.t_max).*...
+                  (exp(1-(t./p.pred.gape.t_max)))).^p.pred.gape.alpha;
 end
 
 
 function pos = getPredPos(t,p)
-    dist = 0*p.dist.init + p.dist.max.*((t./p.dist.t_max).*...
-                         (exp(1-(t./p.dist.t_max)))).^p.dist.alpha;
+    dist = p.pred.dist.init + p.pred.dist.max.*((t./p.pred.dist.t_max).*...
+                         (exp(1-(t./p.pred.dist.t_max)))).^p.pred.dist.alpha;
     pos = [dist dist.*0];
 end
 
 
 function esc = getThrust(t,p)
-    esc = p.esc;
+    esc = p.prey.esc;
 end
 
 
@@ -276,15 +277,18 @@ for i = 1:size(U,1)
         spd = sqrt( (U(i,2)-V(i,2)).^2 + (U(i,1)-V(i,1)).^2);
         
         % Reynolds number
-        Re = spd * p.prey.diam / p.eta;
+        Re = spd * p.prey.diam / p.water.eta;
         
         % Drag coefficient [Kils 1979 (Re 300-15,000)
         % & Roi's mesurements (10,000-85,000)]
-        Cd = (Re.^(-0.1703)).*0.0708;
+        %Cd = (Re.^(-0.1703)).*0.0708
+        
+        % Cylindrical coefficent for above-critical Re (Hoerner, 1965)
+        Cd = 1.2;
         
         % Drag
         D(i,:) = 0.5 * Cd * sum(p.prey.wet_area) * ...
-                  p.rho_water * spd .* (U(i,:)-V(i,:));
+                  p.water.rho * spd .* (U(i,:)-V(i,:));
         
         clear Re Cd spd
     end
@@ -358,8 +362,8 @@ for i = 1:length(gape)
         end
         
         % Pressure gradient along the body
-        dPdx(:,1) = p.rho_water * (1+p.added_mass) .* (A_prev(1) + spd.*dUdx(:,1));
-        dPdx(:,2) = p.rho_water * (1+p.added_mass) .* (A_prev(2) + spd.*dUdx(:,2));
+        dPdx(:,1) = p.water.rho * (1+p.prey.added_mass) .* (A_prev(1) + spd.*dUdx(:,1));
+        dPdx(:,2) = p.water.rho * (1+p.prey.added_mass) .* (A_prev(2) + spd.*dUdx(:,2));
         
         % Pressure force, integrated long the length
         P(i,1) = -trapz(p.prey.s,dPdx(:,1).*p.prey.area);
@@ -396,88 +400,4 @@ for i = 1:length(gape)
                                     rel_pos(i,1),rel_pos(i,2),'linear',0);
     end
 end
-end
-
-
-function p = default_params(f)
-
-
-%% Parameters
-
-% Prey diameter (m)
-p.prey.diam = 2e-3; 
-
-% Prey length (m)
-p.prey.len = 20e-3;
-
-% Prey density (kg m^-3)
-p.prey.rho = 1000;
-
-% Number of body segments defining morphology
-p.prey.num_segs = 20;
-
-% Find area and volume of body segments
-[p.prey.s,p.prey.area,p.prey.vol,p.prey.mass,p.prey.wet_area] = getMorph(p);
-
-% Duration (s)
-p.dur = .5; 
-
-% Max approach speed (m/s)
-p.spd.max = 1;
-
-% Time of max speed (s)
-p.spd.t_max = 30e-3;
-
-% Shape factor for speed
-p.spd.alpha = 2;
-
-% Max gape (m)
-p.gape.max = 20e-3;
-
-% Time of max gape (s)
-p.gape.t_max = 30e-3;
-
-% Shape factor
-p.gape.alpha = 2;
-
-% Max dist (m)
-p.dist.max = 9e-3;
-
-% Time of max dist (s)
-p.dist.t_max = 60e-3;
-
-% Distance shape factor 
-p.dist.alpha = 2;
-
-% Initial distance (m)
-p.dist.init = 9.2e-3;
-
-% Vector of escape force (N)
-p.esc = [8e-3,10e-3,0];
-
-% Sensitivity threshold
-p.th = 0.006;
-
-% Water density (kg m^-3)
-p.rho_water = 1000;
-
-% Kinematic viscosity (m^2 s^-1)
-p.eta = 1e-6;
-
-% Added mass coefficient of a sphere (dimensionless)
-p.added_mass = 0.6; 
-
-% Initial prey position
-p.X0 = [9.2e-3 0];
-
-% Initial prey speed
-p.U0 = [0 0];
-
-% Flow data (dimensionless)
-p.flow.x = f.x;
-p.flow.y = f.y;
-p.flow.u = f.u;
-p.flow.v = f.v;
-
-clear f
 end
