@@ -1,171 +1,249 @@
-function r = siffer(p)
-% Runs a SIFF simulation using matlab's ODE solver functions
+function r = siffer(sim,prey,fl)
+% Runs a SIFF simulation using matlab's ODE solver functions. The three
+% input structions (sim,prey,fl) respectively provide parameter values for
+% the simulation, prey and flow field.
 
-%global p
 
+%% Scale parameters
+% Keeps parameter values at reasonable orders of magnitude.  Also passes
+% only required parameters into the solver.
 
-%% Parameter values
+% Prey parameters
+py.s        = prey.s            ./sim.sL;
+py.sCOM     = prey.sCOM         ./sim.sL;
+py.mass     = prey.mass         ./sim.sM;
+py.wet_area = prey.wet_area     ./sim.sL^2;
+py.x_area   = prey.x_area       ./sim.sL^2;
+py.vol      = prey.vol          ./sim.sL^3;
 
-% Use default parameter values, if none are provided
-if nargin<1
-    
-    % Load flow velocity data ('f')
-    load('flow_field')
+py.pos0     = [prey.pos0(1:2)./sim.sL prey.pos0(3)];
+py.vel0     = [prey.vel0(1:2)./sim.sL.*sim.sT prey.pos0(3).*sim.sT];
+py.add_mass = prey.add_mass;
+py.Cd       = prey.Cd;
 
-    % Function (below) for specifying parameter values
-    p = default_params(f);
-    
-    clear f
-end
+% Flow field
+f.t         = fl.t              ./sim.sT;
+f.pos       = fl.pos            ./sim.sL;
+f.gape_spd  = fl.gape_spd       ./sim.sL .*sim.sT;
+f.X         = fl.X              ./sim.sL;
+f.Y         = fl.Y              ./sim.sL;
+f.U         = fl.U              ./sim.sL .*sim.sT;
+f.V         = fl.V              ./sim.sL .*sim.sT;
+f.dUdx      = fl.dUdx           .*sim.sT;
+f.dVdy      = fl.dVdy           .*sim.sT;
+f.dUdt      = fl.dUdt           ./sim.sL .*sim.sT^2;
+f.dVdt      = fl.dVdt           ./sim.sL .*sim.sT^2;
 
-% Scale parameters (have yet to do)
+% Simulation parameters
+s.rho_water = sim.rho_water     ./sim.sM .*sim.sL^3;
+s.dur       = sim.dur           ./sim.sT;
+s.reltol    = sim.reltol;
 
-% % Define scaling constants
-% sL = L;
-% sT = 10^-3;
-% sM = mass_body*10^6;
-% sF = sM .* sL ./ sT^2;
+% Scaling parameters
+s.sL = sim.sL;
+s.sT = sim.sT;
+s.sM = sim.sM;
+s.sF = sim.sF;
 
-%% Adjust flow field
+% Overwrite previous structures, clear temporaries
+prey = py; clear py
+fl   = f;  clear f
+sim  = s;  clear s
 
-%dddd=4
+% Define useful global parameter
+global pred_position
 
 
 %% Run simulation
 
 % Solver options
 %options = odeset('Events',@evnts,'RelTol',1e-1);
-options = odeset('OutputFcn',@status_check,'RelTol',p.sim.reltol);
-%options = odeset('RelTol',1e-1);
-
-% Function that runs the numerical solver
-[t,X] = solver(p,options);
-
-
-% Store results
-r.t          = t;
-r.prey.pos   = X(:,1:2);
-r.prey.vel   = X(:,3:4);
-r.prey.accel = [diff(r.prey.vel(:,1))./diff(t) diff(r.prey.vel(:,2))./diff(t)];
-
-r.pred.pos      = getPredPos(t,p);
-r.pred.gape_spd = getGapeSpeed(t,p);
-r.pred.gape     = getGape(t,p);
-
-r.prey.fl_vel = getFlowVel(t,p,r.prey.pos,r.pred.pos,r.pred.gape);
-r.prey.PF     = 0.*getPressureForce(r.t,p,r.prey.pos,r.pred.pos,r.prey.accel,...
-                                r.pred.gape,r.prey.fl_vel);
-r.prey.drag = getDrag(p,r.prey.fl_vel,r.prey.vel);
-
-clear t X options
-
-
-%% Plot results
-figure
-
-subplot(3,1,1)
-
-ax1 = gca;
-h1 = line(r.t,1e3*r.pred.pos(:,1),'Color','b','parent',ax1,'linestyle','--');
-set(ax1,'XColor','b','YColor','b')
-xlabel('time(s)');
-ylabel('Displacement (mm)');
-ax2 = axes('Position',get(ax1,'Position'),...
-          'XAxisLocation','top',...
-          'YAxisLocation','right',...
-          'Color','none',...
-          'YColor','black');
-%set(ax2,'YColor','black')
-ylabel('Speed(m/s)');
-
-h2 = line(r.t,r.pred.gape_spd(:,1),'Color','black','parent',ax2);
-h3 = line(r.t,1e3*r.pred.gape,'Color','b');
-h = [h1(1) h2 h3];
-legend(h,'x pos (mm)','gape(mm)','x spd (m/s)');
-title('Kinematic characteristics');
-
-
-subplot(3,1,2)
-plot(r.t,r.prey.drag(:,1)+r.prey.PF(:,1),'k-')
-xlabel('time (s)')
-ylabel('Total x force (N)')
-
-subplot(3,1,3)
-plot(1000.*r.pred.pos(:,1),1000.*r.pred.gape./2,'r-',...
-    1000.*r.pred.pos(:,1),-1000.*r.pred.gape./2,'r-')
-hold on
-plot(1000.*r.prey.pos(:,1),1000.*r.prey.pos(:,2),'b.')
-hold off
-xlabel('x - coord (mm)')
-ylabel('y - coord (mm)')
-axis equal
-
-
-
-end
-
-
-function [t,X] = solver(p,options)
-
-global pred_position
+options = odeset('OutputFcn',@status_check,'RelTol',sim.reltol);
+%options = odeset('OutputFcn',@odeplot,'RelTol',sim.reltol);
 
 % Acceleration in previous timestep
-A_prev = [0 0];
-
+A_prev = [0 0 0];
 
 % Solve governing equation
-[t,X] = ode45(@gov_eqn,[0 p.sim.dur],[p.prey.pos0; p.prey.spd0],options);
+sol = ode45(@(t,X)gov_eqn(t,X,A_prev),[0 sim.dur],[prey.pos0 prey.vel0],options);
 
-    function dX = gov_eqn(t,X)
+% Determine indicies with & without capture
+if max(isnan(sol.y(1,:)))
+    warning(['Nan values appeared in your solution -- the prey is likely ' ...
+            'falling outside of your fluid domain'])
+    capture = 1;
+    idx = 1:max(find(isnan(sol.y(1,:)),1,'first'));
+elseif max(sol.y(1,:)<0) 
+    capture = 1;
+    idx = 1:max(find(sol.y(1,:)<0,1,'first'));
+else
+    capture = 0;
+    idx = 1:length(sol.y(1,:));
+end
+
+% Time to evaluate results
+t = linspace(0,max(sol.x(idx)),length(sol.x(idx))*1.5);
+
+% Find solution at equal intervals
+[X,dX] = deval(sol,t);
+
+% Evaluate governing equation for other variables 
+% (Note: comment this out when not used)
+[dX,D,PF,AR] = gov_eqn(t,X,dX(4:6,:));
+
+% Extract positional data and scale data
+r.cap = capture;
+r.t = t .* sim.sT;
+r.pos = [X(1:2,:).*sim.sL; X(3,:)];
+r.vel = [X(4:5,:).*sim.sL./sim.sT; X(6,:)./sim.sT];
+r.acc = [dX(4:5,:).*sim.sL./sim.sT^2; dX(6,:)./sim.sT^2];
+r.D   = D .*sim.sF;
+r.PF  = PF .*sim.sF;
+r.AR  = AR .*sim.sF;
+
+
+%% Governing equation 
+
+    function [dX,D,PF,AR] = gov_eqn(t,X,bod_acc)
         % ODE of the dynamics of the system
+        % Matricies arranged with time along columns, if evaluated over
+        % more than a single instant
         
-        % Prey body position (inertial FOR)
-        pos = X(1:2)';
+        % Check inputs
+        if nargin<3 && length(t)>1
+            error(['You need to provide the body acceleration for the ' ...
+                ' prey in order to evaluate the results over time']);
+        end
         
-        % Prey body velocity (inertial FOR)
-        V = X(3:4)';
+        % Prey COM acceleration (if analyzing simulation results)
+        if length(t) > 1
+            accCOM_x   = bod_acc(1,:);
+            accCOM_y   = bod_acc(2,:);
+            accCOM_ang = bod_acc(3,:);
+        end
         
-        % Position of the predator's gape (inertial FOR)
-        pred_pos = getPredPos(t,p);
+        % Prey COM position
+        posCOM_x   = X(1,:);
+        posCOM_y   = X(2,:);
+        posCOM_ang = X(3,:);
         
-        pred_position = pred_pos;
+        % Prey COM velocity
+        velCOM_x   = X(4,:);
+        velCOM_y   = X(5,:);
+        velCOM_ang = X(6,:);
         
-        % Instantaneous gape diameter
-        gape = getGape(t,p);
+        % Position of prey's segments (n segments x m time vals)
+        s_x = repmat((prey.s-prey.sCOM)   ,1,length(t)) .* ...
+            repmat(cos(posCOM_ang)      ,length(prey.s),1) + ...
+            repmat(posCOM_x             ,length(prey.s),1);
         
-        % Flow velocity (intertial FOR)
-        U = getFlowVel(t,p,pos,pred_pos,gape);
+        s_y = repmat((prey.s-prey.sCOM)   ,1,length(t)) .* ...
+            repmat(sin(posCOM_ang)      ,length(prey.s),1) + ...
+            repmat(posCOM_y             ,length(prey.s),1);
         
-        % Thrust 
-        %T = getThrust(t,p);
+        %         % Velocity of prey's segments (rotation + translation)
+        %         s_dxdt = ang_velCOM.*(prey.s-prey.sCOM) .* sin(ang_velCOM) + x_velCOM;
+        %         s_dydt = ang_velCOM.*(prey.s-prey.sCOM) .* cos(ang_velCOM) + y_velCOM;
         
-        % Pressure force
-        PF = 0.*getPressureForce(t,p,pos,pred_pos,A_prev,gape,U);
-        %PF = [-5e-3*gape./p.pred.gape.max 0];
+        % Velocity of prey's segments (just translation, n segments x m time vals))
+        s_dxdt = s_x.*0 + repmat(velCOM_x,length(prey.s),1);
+        s_dydt = s_y.*0 + repmat(velCOM_y,length(prey.s),1);
         
-        % Drag
-        D = getDrag(p,U,V);
+        % Interpolate flow conditions at segments
+        % (Note: done this way b/c interp2 is much faster than interp3)
+        for i = 1:length(t)
+            tmp = abs(t(i)-fl.t);
+            idx = find(tmp==min(tmp),1,'first');
+            
+            % Flow velocity
+            s_U(:,i) = interp2(fl.X,fl.Y,fl.U(:,:,idx),s_x(:,i),s_y(:,i));
+            s_V(:,i) = interp2(fl.X,fl.Y,fl.V(:,:,idx),s_x(:,i),s_y(:,i));
+            
+            % Spatial gradient in velocity at segments
+            s_dUdx(:,i) = interp2(fl.X,fl.Y,fl.dUdx(:,:,idx),s_x(:,i),s_y(:,i));
+            s_dVdy(:,i) = interp2(fl.X,fl.Y,fl.dVdy(:,:,idx),s_x(:,i),s_y(:,i));
+            
+            % Flow acceleration at segments
+            s_dUdt(:,i) = interp2(fl.X,fl.Y,fl.dUdt(:,:,idx),s_x(:,i),s_y(:,i));
+            s_dVdt(:,i) = interp2(fl.X,fl.Y,fl.dVdt(:,:,idx),s_x(:,i),s_y(:,i));
+            
+            %clear tmp idx
+        end
+        
+        % Relative velocity at segments
+        s_relvel_x = s_U - s_dxdt;
+        s_relvel_y = s_V - s_dydt;
+        
+        % Segment drag
+        s_drag_x = 0.5 * prey.Cd .* sim.rho_water .* ...
+            repmat(prey.wet_area,1,length(t)) .* ...
+            s_relvel_x .* abs(s_relvel_x);
+        
+        s_drag_y = 0.5 * prey.Cd .* sim.rho_water .* ...
+            repmat(prey.wet_area,1,length(t)) .* ...
+            sim.rho_water .* s_relvel_y .* abs(s_relvel_y);
+        
+        % Total drag
+        D = [sum(s_drag_x,1); sum(s_drag_y,1)];
+        
+        % Relative acceleration at segments
+        if length(t)==1
+            s_relacc_x = s_dUdt - A_prev(1);
+            s_relacc_y = s_dVdt - A_prev(2);
+        else
+            s_relacc_x = s_dUdt - repmat(accCOM_x,length(prey.s),1);
+            s_relacc_y = s_dVdt - repmat(accCOM_y,length(prey.s),1);
+        end
+        
+        % Pressure gradient at segments
+        s_dPdx = -sim.rho_water * (s_dUdt + s_U.*s_dUdx);
+        s_dPdy = -sim.rho_water * (s_dVdt + s_V.*s_dVdy);
+        
+        % Total pressure force
+        PF(1,:) = sum(-s_dPdx.*repmat(prey.vol,1,length(t)),1);
+        PF(2,:) = sum(-s_dPdy.*repmat(prey.vol,1,length(t)),1);
+        
+        % Acceleration reaction force
+        AR(1,:) = sum(-prey.add_mass * sim.rho_water .* ...
+            repmat(prey.vol,1,length(t)) .* s_relacc_x);
+        
+        AR(2,:) = sum(-prey.add_mass * sim.rho_water .* ...
+            repmat(prey.vol,1,length(t)) .* s_relacc_y);
         
         % Body acceleration
-        accel = (D + PF)./...
-                 (p.prey.mass + p.water.rho*sum(p.prey.vol)*p.prey.added_mass);
-   
-        % Define output: speed
-        dX(1,1) = V(1);
-        dX(2,1) = V(2);
+        accelCOM = (D + PF + AR)./prey.mass;
         
-        % Define output: acceleration
-        dX(3,1) = accel(1);
-        dX(4,1) = accel(2);
+        % Output: x speed
+        dX(1,:) = velCOM_x;
+        % Output: y speed
+        dX(2,:) = velCOM_y;
+        % Output: theta speed
+        dX(3,:) = velCOM_ang;
+        
+        % Output: x acceleration
+        dX(4,:) = accelCOM(1,:);
+        % Output: y acceleration
+        dX(5,:) = accelCOM(2,:);
+        % Output: theta acceleration (torques not currently supported)
+        dX(6,:) = 0.*accelCOM(2,:);
         
         % Update previous body acceleration
-        A_prev = accel;
+        if length(t)==1
+            A_prev = accelCOM;
+        end
+        
+        idx,D,PF,AR
+        
+        % Predator's position (used by status_check)
+        pred_position(1,1) = interp1(fl.t,fl.pos(:,1),min(t));
+        pred_position(1,2) = interp1(fl.t,fl.pos(:,2),min(t));
         
     end
-    
 
 
 end
+
+
 
 %function [value,isterminal,direction] = evnts(t,X)
 function status = status_check(t,y,flag,varargin)
@@ -174,7 +252,7 @@ global pred_position
 
 if ~isempty(t)
     pos = y(1);
-    if (pos <= pred_position(1))
+    if isnan(pos) || (pos <= pred_position(1))
         status = 1;
     else
         status = 0;
@@ -183,81 +261,6 @@ else
     status = 1;
 end
     
-
-
-%isterminal = 1;
-%direction = 0;
-
-%rel_pos = pos - pred_position(1);
-
-% if (pos <= pred_position(1))
-%     status = 1;
-%     
-% else
-%     status = 0;;
-% end
-%value
-
-% % Check that linkage geometry is possible
-% if pos < pred_position(1)
-%     value = 0;
-%     direction = 0;
-%     disp('Capture successful!')
-% else
-%     value = 1;
-%     direction = 1;
-% end
-end
-
-
-function [sD,seg_area,seg_vol,mass,wet_area] = getMorph(p)
-% Body morphology of prey
-
-% Normalized body position 
-s = linspace(0,1,p.prey.num_segs)';
-
-% Dimensional body position
-sD = linspace(0,p.prey.len,p.prey.num_segs)';
-
-% Peripheral shape of the prey body
-width = flipud(-(s.^6).*226.67 + (s.^5).*671.83 - (s.^4).*742.67 + ...
-                        (s.^3).*371.74 - (s.^2).*81.765 + s.*7.8304);
-
-%width = flipud(width);
-% x-Sectional area of segments
-seg_area = ((width.*(p.prey.diam/2)).^2).*pi;     
-
-% Wetted area of the segments
-wet_area = trapz(sD,2*pi.*(width.*(p.prey.diam/2)));
-
-% Volume of segments
-seg_vol =  trapz(sD,seg_area);
-
-% Mass
-mass = sum(seg_vol) .* p.prey.rho;
-
-end
-
-
-function spd = getGapeSpeed(t,p)
-% Speed of flow (inertial FOR) at mouth
-    
-spd = p.pred.spd.max * ((t./p.pred.spd.t_max).*...
-               (exp(1-(t./p.pred.spd.t_max)))).^p.pred.spd.alpha;
-
-end
-
-function gape = getGape(t,p)
-% Gape diameter
-gape = p.pred.gape.max.*((t./p.pred.gape.t_max).*...
-                  (exp(1-(t./p.pred.gape.t_max)))).^p.pred.gape.alpha;
-end
-
-
-function pos = getPredPos(t,p)
-    dist = p.pred.dist.init + p.pred.dist.max.*((t./p.pred.dist.t_max).*...
-                         (exp(1-(t./p.pred.dist.t_max)))).^p.pred.dist.alpha;
-    pos = [dist dist.*0];
 end
 
 
@@ -266,138 +269,3 @@ function esc = getThrust(t,p)
 end
 
 
-function D = getDrag(p,U,V)
-% Drag on prey body
-
-for i = 1:size(U,1)
-    if (sum(U(i,:))==0) 
-        D(i,:) = [0 0];
-    else
-        % Flow speed in the prey FOR
-        spd = sqrt( (U(i,2)-V(i,2)).^2 + (U(i,1)-V(i,1)).^2);
-        
-        % Reynolds number
-        Re = spd * p.prey.diam / p.water.eta;
-        
-        % Drag coefficient [Kils 1979 (Re 300-15,000)
-        % & Roi's mesurements (10,000-85,000)]
-        %Cd = (Re.^(-0.1703)).*0.0708
-        
-        % Cylindrical coefficent for above-critical Re (Hoerner, 1965)
-        Cd = 1.2;
-        
-        % Drag
-        D(i,:) = 0.5 * Cd * sum(p.prey.wet_area) * ...
-                  p.water.rho * spd .* (U(i,:)-V(i,:));
-        
-        clear Re Cd spd
-    end
-end
-
-%D = [-1e-5 0];
-end
-
-
-function [P,C] = getPressureForce(t,p,pos,pred_pos,A_prev,gape,U)
-% Calc pressure force
-
-for i = 1:length(gape)
-    if gape(i)==0
-        P(i,:) = [0 0];
-    else
-        
-        % Prey position relative to predator
-        rel_pos = (pos(i,:) - pred_pos(i,:))./gape(i);
-        
-        % Unit vector for direction of prey WRT predator
-        b_orient = rel_pos ./ abs(rel_pos);
-        
-        b_orient(isnan(b_orient)) = zeros(1,sum(isnan(b_orient)));
-        
-        % Speed at mouth
-        spd_mouth = getGapeSpeed(t(i),p);
-        
-        % Position values for body
-        Xs = repmat(rel_pos,p.prey.num_segs,1) + ...
-                    [p.prey.s./gape(i) p.prey.s.*0] .* ...
-                    repmat(b_orient,p.prey.num_segs,1);
-        
-%         % Scale position data for flow field
-%         x = p.flow.x * gape(i);
-%         y = p.flow.y * gape(i);
-        
-        % Flow speed in the prey FOR
-        spd = sqrt( U(i,1).^2 + U(i,2).^2 );
-        
-        
-        
-        %TODO: modify this to do 2D
-        
-        % If the flow field doesn't encompass the prey . . .
-        if max(max(p.flow.x(:))>Xs(:,1))==0
-            dUdx = 0.*Xs;
-        
-        elseif (max(p.flow.x(:))>min(Xs(:,1))) && ...
-               (max(p.flow.x(:))<max(Xs(:,1)))
-            % min(max(p.flow.y(:))>Xs(:,2))==0 || ...
-            % min(min(p.flow.y(:))<Xs(:,2))==0
-         
-            % . . . use the speed gradient at edge of flow field
-%             dU = spd_mouth .* (p.flow.u(1,end)-p.flow.u(1,end-5));
-%             dx = gape(i).*(p.flow.x(1,end)-p.flow.x(1,end-5));
-            dx = gape(i).*(max(Xs(:,1)) - max(p.flow.x(:)));
-            dU = - min(spd_mouth .* p.flow.u(:,end));
-            dUdx = [repmat(dU/dx,length(Xs),1) zeros(length(Xs),1)];
-        %elseif min(Xs(:,1))<=0
-            %[gape(i) dU dx dU/dx]
-        else
-            % Otherwise, calcualte the speed at each segment
-            Us(:,1) = spd_mouth .* interp2(p.flow.x,p.flow.y,p.flow.u,...
-                Xs(:,1),Xs(:,2),'linear',0);
-            Us(:,2) = spd_mouth .* interp2(p.flow.x,p.flow.y,p.flow.v,...
-                Xs(:,1),Xs(:,2),'linear',0);
-            
-            % Velocity gradient along the body
-            dUdx = [0 0; diff(Us(:,1))./diff(p.prey.s) diff(Us(:,2))./diff(p.prey.s)];
-        end
-        
-        % Pressure gradient along the body
-        dPdx(:,1) = p.water.rho * (1+p.prey.added_mass) .* (A_prev(1) + spd.*dUdx(:,1));
-        dPdx(:,2) = p.water.rho * (1+p.prey.added_mass) .* (A_prev(2) + spd.*dUdx(:,2));
-        
-        % Pressure force, integrated long the length
-        P(i,1) = -trapz(p.prey.s,dPdx(:,1).*p.prey.area);
-        P(i,2) = -trapz(p.prey.s,dPdx(:,2).*p.prey.area);
-        
-        C = spd.*dUdx(:,1);
-        
-        clear x y Us dUdx dPdx rel_pos b_orient spd_mouth Xs dU dx
-    end
-end
-%P = 0.*pos;
-end
-
-
-
-function U = getFlowVel(t,p,pos,pred_pos,gape)
-% Flow in at the position of the prey in the inertial FOR
-
-% Loop through gape values
-for i = 1:length(gape)
-    if gape(i)==0
-        U(i,:) = [0 0];
-    else
-        % Prey position relative to predator
-        rel_pos(i,:) = (pos(i,:) - pred_pos(i,:))./gape(i);
-        
-        % Speed at mouth
-        spd_mouth = getGapeSpeed(t(i),p);
-        
-        % Flow speed in the inertial FOR
-        U(i,1) = spd_mouth .* interp2(p.flow.x,p.flow.y,p.flow.u,...
-                                    rel_pos(i,1),rel_pos(i,2),'linear',0);
-        U(i,2) = spd_mouth .* interp2(p.flow.x,p.flow.y,p.flow.v,...
-                                    rel_pos(i,1),rel_pos(i,2),'linear',0);
-    end
-end
-end

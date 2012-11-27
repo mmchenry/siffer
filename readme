@@ -1,0 +1,23 @@
+1. Wrapper files
+
+SIFF simulations are run with wrapper files that start with 'run' (e.g. 'run_siffer_test.m'). These run files will eventually become more sophisticated to run batches of simulations with varying parameter values. These files include all path definitions for loading and saving data.  Simulation batches should take advantage of the parallel processing capabilities of matlab.
+
+
+2. Parameter values
+
+In each simulation, parameter sets are needed for the predator (the 'pred' strcuture), prey (the 'prey' strcuture) and simulation configuration (the 'sim' structure). The values for parameters within these structures are contained within the m-files that start with 'params' (e.g. 'params_default.m').  Ideally, these strcutures should provide all paramters needed to run a simulation, such that the m-files used to create flow field and run simulations are generic.
+
+
+3. Flow fields
+
+The predator parameters, along with the results of CFD simulations, are used to construct a flow field created by a predator, which is stored in the 'fl' structure. This structure is created by the m-files starting with 'flow' (e.g. 'flow_uniform_ramp.m'). Some of these m-files create simplified flow fields (i.e. not feeding flows) in order to test the model under more simple conditions. Because the generation of these flow fields is relatively slow and may not need to change between simulations, the wrapper files may save a .mat file that contains the flow data.  This file may then be loaded on subsequent simulations, rather than regenerate the flow data repeatedly.
+
+
+4. The solver
+
+siffer.m -- Contains the ODE solver used to run simulations. It requires parameter values for the simulation ('sim'), the flow field ('fl') and the prey ('prey').  It returns the simulation results within the 'r' strcuture.
+
+
+5. Visualization
+
+m-files starting with 'vis' create animations and graphs of simulation results.
