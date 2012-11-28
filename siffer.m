@@ -66,6 +66,7 @@ A_prev = [0 0 0];
 
 % Solve governing equation
 sol = ode45(@(t,X)gov_eqn(t,X,A_prev),[0 sim.dur],[prey.pos0 prey.vel0],options);
+%sol = ode15s(@(t,X)gov_eqn(t,X,A_prev),[0 sim.dur],[prey.pos0 prey.vel0],options);
 
 % Determine indicies with & without capture
 if max(isnan(sol.y(1,:)))
@@ -80,6 +81,9 @@ else
     capture = 0;
     idx = 1:length(sol.y(1,:));
 end
+
+
+%TODO: adjust this so that it accounts for changes in the predator position
 
 % Time to evaluate results
 t = linspace(0,max(sol.x(idx)),length(sol.x(idx))*1.5);
@@ -184,7 +188,7 @@ r.AR  = AR .*sim.sF;
             sim.rho_water .* s_relvel_y .* abs(s_relvel_y);
         
         % Total drag
-        D = [sum(s_drag_x,1); sum(s_drag_y,1)];
+        D = 0.*[sum(s_drag_x,1); sum(s_drag_y,1)];
         
         % Relative acceleration at segments
         if length(t)==1
@@ -204,10 +208,10 @@ r.AR  = AR .*sim.sF;
         PF(2,:) = sum(-s_dPdy.*repmat(prey.vol,1,length(t)),1);
         
         % Acceleration reaction force
-        AR(1,:) = sum(-prey.add_mass * sim.rho_water .* ...
+        AR(1,:) = 0.*sum(-prey.add_mass * sim.rho_water .* ...
             repmat(prey.vol,1,length(t)) .* s_relacc_x);
         
-        AR(2,:) = sum(-prey.add_mass * sim.rho_water .* ...
+        AR(2,:) = 0.*sum(-prey.add_mass * sim.rho_water .* ...
             repmat(prey.vol,1,length(t)) .* s_relacc_y);
         
         % Body acceleration
@@ -232,7 +236,7 @@ r.AR  = AR .*sim.sF;
             A_prev = accelCOM;
         end
         
-        idx,D,PF,AR
+        %idx,D,PF,AR
         
         % Predator's position (used by status_check)
         pred_position(1,1) = interp1(fl.t,fl.pos(:,1),min(t));

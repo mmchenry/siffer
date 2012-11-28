@@ -14,7 +14,7 @@ prey.len = 3.5e-3;
 prey.rho = 1000;
 
 % Number of body segments defining morphology
-prey.num_segs = 50;
+prey.num_segs = 10;
 
 % Position of COM
 prey.sCOM = 0.25 * prey.len;

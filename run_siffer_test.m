@@ -6,8 +6,8 @@ function run_siffer_test
 %% Define paths
 
 % Root directory for saving and loading simulation data
-%sim_path = '/Users/mmchenry/Dropbox/Projects/Holzmann/sims/validate';
-sim_path = '/Volumes/Flow HD/Dropbox/Projects/Holzmann/sims/validate';
+sim_path = '/Users/mmchenry/Dropbox/Projects/Holzmann/sims/validate';
+%sim_path = '/Volumes/Flow HD/Dropbox/Projects/Holzmann/sims/validate';
 
 
 %% Set parameter values

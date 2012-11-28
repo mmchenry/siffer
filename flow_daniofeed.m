@@ -15,6 +15,19 @@ ys = sim.flow_lim(3):mean(diff(xs)):sim.flow_lim(4);
 clear xs ys flow_lim
 
 
+
+%% Downsample CFD data along x
+
+skip_fctr = 4;
+
+F_tmp(:,:,1) = Field(:,1:skip_fctr:end,1);
+F_tmp(:,:,2) = Field(:,1:skip_fctr:end,2);
+x = x(:,1:skip_fctr:end);
+y = y(:,1:skip_fctr:end);
+
+Field = F_tmp; clear F_tmp
+
+
 %% Predator gape and position 
 
 % Evenly-spaced time vector
@@ -25,10 +38,10 @@ Dgape         = 10.*abs(diff(getGapeSpeed(t,pred))./diff(t));
 sample_period = sim.dur.*Dgape./trapz(Dgape);
 
 % Redefine time with variable period
-t = cumsum(sample_period);
+t = [0; cumsum(sample_period)];
 
 % Temporal variables for flow
-pos      = getPredPos(t,pred);
+pos      = 0.*getPredPos(t,pred);
 gape_spd = getGapeSpeed(t,pred);
 gape     = getGape(t,pred);
 

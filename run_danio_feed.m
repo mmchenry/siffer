@@ -5,8 +5,8 @@ function run_danio_feed
 %% Define paths
 
 % Root directory for saving and loading simulation data
-%sim_path = '/Users/mmchenry/Dropbox/Projects/Holzmann/sims/danio';
-sim_path = '/Volumes/Flow HD/Dropbox/Projects/Holzmann/sims/danio';
+sim_path = '/Users/mmchenry/Dropbox/Projects/Holzmann/sims/danio';
+%sim_path = '/Volumes/Flow HD/Dropbox/Projects/Holzmann/sims/danio';
 
 
 %% Set parameter values
@@ -74,10 +74,9 @@ figure;
 subplot(2,1,1)
 plot(r.t,1000.*r.pos(1,:),'k-')
 xlabel('time (s)');ylabel('position (mm)');
-title('Constant acceleration');
 
 subplot(2,1,2)
-plot(r.t,r.D(1,:),'r-',r.t,r.PF(1,:),'b-',r.t,r.AR,'g-')
+plot(r.t,r.D(1,:),'r-',r.t,r.PF(1,:),'b-',r.t,r.AR(1,:),'g-')
 legend('D','PF','AR')
 xlabel('time (s)');ylabel('Force (N)');
 
