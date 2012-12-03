@@ -53,9 +53,13 @@ if vis_sim
     figure;
     
     subplot(2,1,1)
-    plot(r.t,1000.*r.pos(1,:),'k-')
+    plot(r.t,1000.*r.pos(1,:),'k-',r.t,r.pred_pos,'r--')
     xlabel('time (s)');ylabel('position (mm)');
-    title('Constant acceleration');
+    if r.cap
+        title('Captured!');
+    else
+        title('Escaped!');
+    end
     
     subplot(2,1,2)
     plot(r.t,r.D(1,:),'r-',r.t,r.PF(1,:),'b-',r.t,r.AR(1,:),'g-')

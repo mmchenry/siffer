@@ -41,9 +41,14 @@ sample_period = sim.dur.*Dgape./trapz(Dgape);
 t = [0; cumsum(sample_period)];
 
 % Temporal variables for flow
-pos      = 0.*getPredPos(t,pred);
+pos      = getPredPos(t,pred);
 gape_spd = getGapeSpeed(t,pred);
 gape     = getGape(t,pred);
+
+% Check that predator remains in fluid domain
+if pos(:,1) > sim.flow_lim(2)
+    error('Predator moves outside of fluid domain within simulation duration')
+end
 
 clear Dgape sample_period
 
@@ -139,8 +144,8 @@ end
 function spd = getGapeSpeed(t,pred)
 % Speed of flow (inertial FOR) at mouth
     
-spd = pred.spd.max * ((t./pred.spd.t_max).*...
-               (exp(1-(t./pred.spd.t_max)))).^pred.spd.alpha;
+spd = pred.flw_spd.max * ((t./pred.flw_spd.t_max).*...
+               (exp(1-(t./pred.flw_spd.t_max)))).^pred.flw_spd.alpha;
 
 end
 
@@ -153,8 +158,9 @@ end
 
 
 function pos = getPredPos(t,pred)
-    dist = pred.dist.init + pred.dist.max.*((t./pred.dist.t_max).*...
-                         (exp(1-(t./pred.dist.t_max)))).^pred.dist.alpha;
+%     dist = pred.dist.init + pred.dist.max.*((t./pred.dist.t_max).*...
+%                          (exp(1-(t./pred.dist.t_max)))).^pred.dist.alpha;
+    dist = pred.pos0(1) + pred.app_spd.*t;
     pos = [dist dist.*0];
 end
 

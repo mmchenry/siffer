@@ -5,23 +5,18 @@ function run_danio_feed
 %% Define paths
 
 % Root directory for saving and loading simulation data
-sim_path = '/Users/mmchenry/Dropbox/Projects/Holzmann/sims/danio';
-%sim_path = '/Volumes/Flow HD/Dropbox/Projects/Holzmann/sims/danio';
+% (set up to deal with Matt's 2 computers)
+if isdir('/Users/mmchenry/Dropbox/Projects/Holzmann/sims/danio')
+    sim_path = '/Users/mmchenry/Dropbox/Projects/Holzmann/sims/danio';
+else
+    sim_path = '/Volumes/Flow HD/Dropbox/Projects/Holzmann/sims/danio';
+end
 
 
 %% Set parameter values
 
 % Default parameter values
 [sim,pred,prey] = params_danio;
-
-run_const_accel = 1;
-run_const_grad  = 0;
-
-% Visualize flow
-%vis_flow = 0;
-
-% Vizualize simulation results
-%vis_sim = 1;
 
 
 %% Generate (or load) flow field
@@ -61,7 +56,7 @@ tic
 r = siffer(sim,prey,fl);
 
 % Animate simulation results
-%vis_sim(fl,sim,prey,r)
+vis_sim(fl,sim,prey,r)
 
 % Report time
 t_lapse = toc;
@@ -72,21 +67,20 @@ disp(['Sim completed in ' num2str(t_lapse) 's'])
 figure;
 
 subplot(2,1,1)
-plot(r.t,1000.*r.pos(1,:),'k-')
+plot(r.t,1000.*r.pos(1,:),'k-',r.t,1000.*r.pred_pos(1,:),'r--')
 xlabel('time (s)');ylabel('position (mm)');
+legend('prey','pred','Location','West')
+
+if r.cap
+    title('Captured!');
+else
+    title('Escaped!');
+end
 
 subplot(2,1,2)
 plot(r.t,r.D(1,:),'r-',r.t,r.PF(1,:),'b-',r.t,r.AR(1,:),'g-')
-legend('D','PF','AR')
+legend('D','PF','AR','Location','SouthWest')
 xlabel('time (s)');ylabel('Force (N)');
-
-
-
-
-
-
-
-
 
 
 end

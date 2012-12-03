@@ -10,6 +10,7 @@ function r = siffer(sim,prey,fl)
 
 % Prey parameters
 py.s        = prey.s            ./sim.sL;
+py.r        = prey.r            ./sim.sL;
 py.sCOM     = prey.sCOM         ./sim.sL;
 py.mass     = prey.mass         ./sim.sM;
 py.wet_area = prey.wet_area     ./sim.sL^2;
@@ -64,26 +65,34 @@ options = odeset('OutputFcn',@status_check,'RelTol',sim.reltol);
 % Acceleration in previous timestep
 A_prev = [0 0 0];
 
+% Prey midline coorindates in prey FOR
+mid_x = prey.s - prey.sCOM;
+mid_y = mid_x.*0;
+
+% Body coorindates in prey FOR
+marg_x = [prey.s; prey.s(end:-1:1)]-prey.sCOM;
+marg_y = [prey.r; -prey.r(end:-1:1)];
+
 % Solve governing equation
 sol = ode45(@(t,X)gov_eqn(t,X,A_prev),[0 sim.dur],[prey.pos0 prey.vel0],options);
 %sol = ode15s(@(t,X)gov_eqn(t,X,A_prev),[0 sim.dur],[prey.pos0 prey.vel0],options);
+
+ % Predator's position (used by status_check)
+ pred_pos = interp1(fl.t,fl.pos(:,1),sol.x);
 
 % Determine indicies with & without capture
 if max(isnan(sol.y(1,:)))
     warning(['Nan values appeared in your solution -- the prey is likely ' ...
             'falling outside of your fluid domain'])
+    capture = nan;
+    idx = 1:find(isnan(sol.y(1,:)),1,'first');
+elseif max(sol.y(1,:) < pred_pos) 
     capture = 1;
-    idx = 1:max(find(isnan(sol.y(1,:)),1,'first'));
-elseif max(sol.y(1,:)<0) 
-    capture = 1;
-    idx = 1:max(find(sol.y(1,:)<0,1,'first'));
+    idx = 1:find(sol.y(1,:)<pred_pos,1,'first');
 else
     capture = 0;
     idx = 1:length(sol.y(1,:));
 end
-
-
-%TODO: adjust this so that it accounts for changes in the predator position
 
 % Time to evaluate results
 t = linspace(0,max(sol.x(idx)),length(sol.x(idx))*1.5);
@@ -93,22 +102,28 @@ t = linspace(0,max(sol.x(idx)),length(sol.x(idx))*1.5);
 
 % Evaluate governing equation for other variables 
 % (Note: comment this out when not used)
-[dX,D,PF,AR] = gov_eqn(t,X,dX(4:6,:));
+[dX,D,PF,AR,m_x,m_y] = gov_eqn(t,X,dX(4:6,:));
 
-% Extract positional data and scale data
-r.cap = capture;
-r.t = t .* sim.sT;
-r.pos = [X(1:2,:).*sim.sL; X(3,:)];
-r.vel = [X(4:5,:).*sim.sL./sim.sT; X(6,:)./sim.sT];
-r.acc = [dX(4:5,:).*sim.sL./sim.sT^2; dX(6,:)./sim.sT^2];
-r.D   = D .*sim.sF;
-r.PF  = PF .*sim.sF;
-r.AR  = AR .*sim.sF;
+ % Predator's position (used by status_check)
+ pred_pos = interp1(fl.t,fl.pos(:,1),t);
+
+% Store results in re-scaled units
+r.cap      = capture;
+r.t        = t .* sim.sT;
+r.pos      = [X(1:2,:).*sim.sL; X(3,:)];
+r.marg_x   = [m_x.*sim.sL];
+r.marg_y   = [m_y.*sim.sL];
+r.vel      = [X(4:5,:).*sim.sL./sim.sT; X(6,:)./sim.sT];
+r.acc      = [dX(4:5,:).*sim.sL./sim.sT^2; dX(6,:)./sim.sT^2];
+r.D        = D .*sim.sF;
+r.PF       = PF .*sim.sF;
+r.AR       = AR .*sim.sF;
+r.pred_pos = [pred_pos.*sim.sL; pred_pos.*0];
 
 
 %% Governing equation 
 
-    function [dX,D,PF,AR] = gov_eqn(t,X,bod_acc)
+    function [dX,D,PF,AR,m_x,m_y] = gov_eqn(t,X,bod_acc)
         % ODE of the dynamics of the system
         % Matricies arranged with time along columns, if evaluated over
         % more than a single instant
@@ -136,14 +151,26 @@ r.AR  = AR .*sim.sF;
         velCOM_y   = X(5,:);
         velCOM_ang = X(6,:);
         
-        % Position of prey's segments (n segments x m time vals)
-        s_x = repmat((prey.s-prey.sCOM)   ,1,length(t)) .* ...
-            repmat(cos(posCOM_ang)      ,length(prey.s),1) + ...
-            repmat(posCOM_x             ,length(prey.s),1);
+        % Loop through time
+        for i = 1:length(t)
+            % Rotation matrix
+            M = [cos(posCOM_ang(i)) -sin(posCOM_ang(i)); ...
+                 sin(posCOM_ang(i))  cos(posCOM_ang(i))];
+            
+            % Rotate
+            py_mid  = M*[mid_x';  mid_y'];
+            py_marg = M*[marg_x'; marg_y'];
+            
+            % Translate position into inertial FOR
+            s_x(:,i) = py_mid(1,:)' + posCOM_x(i);
+            s_y(:,i) = py_mid(2,:)' + posCOM_y(i);
+            m_x(:,i) = py_marg(1,:)' + posCOM_x(i);
+            m_y(:,i) = py_marg(2,:)' + posCOM_y(i);
+            
+            clear M py_mid py_marg
+        end
         
-        s_y = repmat((prey.s-prey.sCOM)   ,1,length(t)) .* ...
-            repmat(sin(posCOM_ang)      ,length(prey.s),1) + ...
-            repmat(posCOM_y             ,length(prey.s),1);
+        clear i
         
         %         % Velocity of prey's segments (rotation + translation)
         %         s_dxdt = ang_velCOM.*(prey.s-prey.sCOM) .* sin(ang_velCOM) + x_velCOM;
@@ -188,7 +215,7 @@ r.AR  = AR .*sim.sF;
             sim.rho_water .* s_relvel_y .* abs(s_relvel_y);
         
         % Total drag
-        D = 0.*[sum(s_drag_x,1); sum(s_drag_y,1)];
+        D = [sum(s_drag_x,1); sum(s_drag_y,1)];
         
         % Relative acceleration at segments
         if length(t)==1
@@ -208,10 +235,10 @@ r.AR  = AR .*sim.sF;
         PF(2,:) = sum(-s_dPdy.*repmat(prey.vol,1,length(t)),1);
         
         % Acceleration reaction force
-        AR(1,:) = 0.*sum(-prey.add_mass * sim.rho_water .* ...
+        AR(1,:) = sum(-prey.add_mass * sim.rho_water .* ...
             repmat(prey.vol,1,length(t)) .* s_relacc_x);
         
-        AR(2,:) = 0.*sum(-prey.add_mass * sim.rho_water .* ...
+        AR(2,:) = sum(-prey.add_mass * sim.rho_water .* ...
             repmat(prey.vol,1,length(t)) .* s_relacc_y);
         
         % Body acceleration

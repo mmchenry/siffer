@@ -46,7 +46,7 @@ prey.add_mass = 0.6;
 
 % Drag coefficient for body segment, set to cylinder drag coefficent for 
 % above-critical Re (Hoerner, 1965)
-prey.Cd = 1.2;
+prey.Cd = 0*1.2;
 
 % Initial prey position (x (m), y (m), orientaton angle (rad))
 prey.pos0= [.01 0 -pi/2];
@@ -64,13 +64,13 @@ prey.esc = [0 0 0];
 %% PREDATOR PARAMETERS 
 
 % Max suction speed (m/s)
-pred.spd.max = 1;
+pred.flw_spd.max = 1;
 
 % Time of max speed (s)
-pred.spd.t_max = 30e-3;
+pred.flw_spd.t_max = 30e-3;
 
 % Shape factor for speed
-pred.spd.alpha = 2;
+pred.flw_spd.alpha = 2;
 
 % Max gape (m)
 pred.gape.max = 20e-3;
@@ -81,17 +81,11 @@ pred.gape.t_max = 30e-3;
 % Shape factor
 pred.gape.alpha = 2;
 
-% Max dist (m)
-pred.dist.max = 9e-3;
+% Initial position of predator (m)
+pred.pos0 = [0 0 0];
 
-% Time of max dist (s)
-pred.dist.t_max = 60e-3;
-
-% Distance shape factor 
-pred.dist.alpha = 2;
-
-% Initial distance (m)
-pred.dist.init = 9.2e-3;
+% Approach speed (m/s)
+pred.app_spd = 10e-2;
 
 
 %% SIMULATION PARAMETERS
@@ -109,13 +103,13 @@ sim.dur = .1;
 sim.reltol = 1e-3;
 
 % Number of time values to define predator flow
-sim.num_time = 500;
+sim.num_time = 250;
 
 % Number of values along the x-axis to define pred flow
-sim.num_x = 200;
+sim.num_x = 100;
 
 % Boundaries in x and y directions for defining pred flow
-sim.flow_lim = [-.005 .02 -.02 .02];
+sim.flow_lim = [0 .03 -.015 .015];
 
 % Scaling constants
 sim.sL = prey.len;
