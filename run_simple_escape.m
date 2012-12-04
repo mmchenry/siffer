@@ -1,5 +1,6 @@
-function run_danio_feed
-% Wrapper to run a single simulation of danio predator-prey interaction
+function run_simple_escape
+% Wrapper to run a single simulation of larval escape response, without
+% suction feeding from a predator.
 
 
 %% Define paths
@@ -19,34 +20,10 @@ end
 [sim,pred,prey] = params_danio;
 
 
-%% Generate (or load) flow field
+%% Generate flow field
 
-% Prompt to create new flow field, if necessary
-if ~isempty(dir([sim_path filesep 'danio_flow.mat']));
-    
-    answer = questdlg('Generate new flow field data?',...
-                      'Flow data',...
-                      'No','Yes','Cancel','No');
-                  
-    if strcmp(answer,'Cancel')
-        return
-        
-    elseif strcmp(answer,'Yes')
-        % Load flow data (x2, y2, Field1)
-        load([sim_path filesep 'Speed_Field.mat'])
-        
-        % Create % save flow field structure
-        fl = flow_daniofeed(sim,pred,x2,y2,Field1);
-        save([sim_path filesep 'danio_flow'],'fl')
-    end
-    
-end
-
-% Load 'fl' flow field structure
-load([sim_path filesep 'danio_flow.mat'])  
-
-% Animate flow field
-%vis_flow(fl,sim)
+% Create flow field structure
+fl = flow_noflow(sim,pred,x2,y2,Field1);
 
 
 %% Run simulation
@@ -56,7 +33,7 @@ tic
 r = siffer(sim,prey,fl);
 
 % Animate simulation results
-%vis_sim(fl,sim,prey,r)
+vis_sim(fl,sim,prey,r)
 
 % Report time
 t_lapse = toc;
@@ -71,7 +48,7 @@ plot(r.t,1000.*r.pos(1,:),'k-',r.t,1000.*r.pred_pos(1,:),'r--')
 xlabel('time (s)');ylabel('position (mm)');
 legend('prey','pred','Location','West')
 
-if ~isnan(r.cap) && r.cap
+if r.cap
     title('Captured!');
 else
     title('Escaped!');

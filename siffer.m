@@ -151,7 +151,7 @@ r.pred_pos = [pred_pos.*sim.sL; pred_pos.*0];
         velCOM_y   = X(5,:);
         velCOM_ang = X(6,:);
         
-        % Loop through time
+        % Loop through time for prey position
         for i = 1:length(t)
             % Rotation matrix
             M = [cos(posCOM_ang(i)) -sin(posCOM_ang(i)); ...
@@ -202,16 +202,25 @@ r.pred_pos = [pred_pos.*sim.sL; pred_pos.*0];
         end
         
         % Relative velocity at segments
-        s_relvel_x = s_U - s_dxdt;
-        s_relvel_y = s_V - s_dydt;
+        s_relvel_x = mean(s_U,1) - mean(s_dxdt,1);
+        s_relvel_y = mean(s_V,1) - mean(s_dydt,1);
         
-        % Segment drag
+%         % Segment drag
+%         s_drag_x = 0.5 * prey.Cd .* sim.rho_water .* ...
+%             repmat(prey.wet_area,1,length(t)) .* ...
+%             s_relvel_x .* abs(s_relvel_x);
+%         
+%         s_drag_y = 0.5 * prey.Cd .* sim.rho_water .* ...
+%             repmat(prey.wet_area,1,length(t)) .* ...
+%             sim.rho_water .* s_relvel_y .* abs(s_relvel_y);
+
+        % Total drag
         s_drag_x = 0.5 * prey.Cd .* sim.rho_water .* ...
-            repmat(prey.wet_area,1,length(t)) .* ...
+            sum(prey.wet_area) .* ...
             s_relvel_x .* abs(s_relvel_x);
         
         s_drag_y = 0.5 * prey.Cd .* sim.rho_water .* ...
-            repmat(prey.wet_area,1,length(t)) .* ...
+            sum(prey.wet_area) .* ...
             sim.rho_water .* s_relvel_y .* abs(s_relvel_y);
         
         % Total drag

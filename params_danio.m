@@ -46,7 +46,7 @@ prey.add_mass = 0.6;
 
 % Drag coefficient for body segment, set to cylinder drag coefficent for 
 % above-critical Re (Hoerner, 1965)
-prey.Cd = 0*1.2;
+prey.Cd = 1.2;
 
 % Initial prey position (x (m), y (m), orientaton angle (rad))
 prey.pos0= [.01 0 -pi/2];
